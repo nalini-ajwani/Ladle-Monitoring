@@ -2,3 +2,4 @@ Flask
 flask-socketio
 eventlet
 flask-cors
+gunicorn
