@@ -1,51 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ladle Monitoring Dashboard</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ladle Real-Time Monitoring</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      margin: 20px;
-      background-color: #f7f7f7;
+      background-color: #f4f4f4;
+      margin: 0;
+      padding: 0;
     }
     .container {
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-      max-width: 800px;
-      margin: auto;
+      max-width: 1100px;
+      margin: 30px auto;
+      background: #fff;
+      padding: 25px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
-    h2 {
+    h1 {
       text-align: center;
     }
-    label {
-      font-weight: bold;
+    form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 30px;
     }
     input, select {
-      width: 100%;
-      padding: 8px;
-      margin: 8px 0 20px;
-      border-radius: 4px;
+      padding: 10px;
+      font-size: 1rem;
       border: 1px solid #ccc;
+      border-radius: 5px;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 30px;
+      margin-top: 20px;
     }
     th, td {
-      border: 1px solid #ddd;
+      border: 1px solid #ccc;
       padding: 10px;
       text-align: center;
     }
     th {
-      background-color: #f2f2f2;
+      background-color: #f0f0f0;
     }
+    .green { background-color: #d4f8d4; }
+    .yellow { background-color: #fff5cc; }
+    .red { background-color: #ffd6d6; }
     .button {
-      background-color: #4CAF50;
+      background-color: #333;
       color: white;
       padding: 10px 20px;
       border: none;
@@ -56,122 +63,147 @@
 </head>
 <body>
   <div class="container">
-    <h2>Real-Time Ladle Monitoring</h2>
+    <h1>Ladle Real-Time Monitoring Dashboard</h1>
     <form id="ladleForm">
-      <label for="ladleNo">Ladle Number:</label>
-      <input type="text" id="ladleNo" required />
-
-      <label for="process">Process:</label>
-      <select id="process" required>
+      <input type="number" id="ladleNo" placeholder="Ladle No" required>
+      <select id="process">
+        <option value="">Select Event</option>
         <option value="Tap">Tap</option>
-        <option value="Ladle">Ladle</option>
-        <option value="RH">RH</option>
-        <option value="CK1">CK1</option>
-        <option value="CK2">CK2</option>
-        <option value="CV1">CV1</option>
-        <option value="CV2">CV2</option>
+        <option value="Enter LF (LF1)">Enter LF (LF1)</option>
+        <option value="Enter LF (LF2)">Enter LF (LF2)</option>
+        <option value="Enter LF (LF3)">Enter LF (LF3)</option>
+        <option value="Left LF">Left LF</option>
+        <option value="In RH">In RH</option>
+        <option value="Left RH">Left RH</option>
+        <option value="Enter Caster (CK1)">Enter Caster (CK1)</option>
+        <option value="Enter Caster (CK2)">Enter Caster (CK2)</option>
+        <option value="Enter Caster (CV1)">Enter Caster (CV1)</option>
+        <option value="Enter Caster (CV2)">Enter Caster (CV2)</option>
+        <option value="Left Caster">Left Caster</option>
+        <option value="In Gas">In Gas</option>
+        <option value="Out Gas">Out Gas</option>
         <option value="Down">Down</option>
         <option value="Full Down">Full Down</option>
-        <option value="Gas">Gas</option>
       </select>
-
-      <label for="inTime">In Time:</label>
-      <input type="datetime-local" id="inTime" required />
-
-      <label for="outTime">Out Time:</label>
-      <input type="datetime-local" id="outTime" required />
-
-      <button class="button" type="button" onclick="submitProcess()">Submit</button>
+      <input type="datetime-local" id="timestamp" required>
+      <input type="text" id="remarks" placeholder="Remarks (optional)">
+      <button type="button" class="button" onclick="handleSubmit()">Submit</button>
+      <button type="button" class="button" onclick="renderTable()">Refresh</button>
     </form>
-
     <table>
       <thead>
         <tr>
           <th>Ladle No</th>
           <th>Current Status</th>
-          <th>Process Duration</th>
+          <th>Since</th>
+          <th>Duration</th>
           <th>Total Duration</th>
-          <th>Metal Life</th>
           <th>Slag Life</th>
+          <th>Metal Life</th>
         </tr>
       </thead>
-      <tbody id="dashboard">
-        <tr>
-          <td colspan="6">No data yet</td>
-        </tr>
+      <tbody id="statusTable">
+        <tr><td colspan="7">No data yet</td></tr>
       </tbody>
     </table>
   </div>
-
-  <!-- Socket.IO client -->
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script>
-    const socket = io();
+    const ladleStatus = {};
 
-    const processHistory = [];
-    let previousLife = { metal: 0, slag: 0 };
-
-    socket.on("update_dashboard", (data) => {
-      processHistory.push(data);
-      renderDashboard(data);
-    });
-
-    function submitProcess() {
-      const ladleNo = document.getElementById('ladleNo').value;
+    function handleSubmit() {
+      const ladleNo = document.getElementById('ladleNo').value.trim();
       const process = document.getElementById('process').value;
-      const inTimeStr = document.getElementById('inTime').value;
-      const outTimeStr = document.getElementById('outTime').value;
+      const timestamp = document.getElementById('timestamp').value;
+      const remarks = document.getElementById('remarks').value.trim();
 
-      const inTime = new Date(inTimeStr);
-      const outTime = new Date(outTimeStr);
+      if (!ladleNo || !process || !timestamp) return;
 
-      const processDuration = (outTime - inTime) / 1000;
+      const prev = ladleStatus[ladleNo] || {};
+      const lastProc = prev.process;
+      const lastTap = prev.tapTime;
+      const isFirstCycle = !prev.metalLife && !prev.slagLife && !lastTap;
 
-      const tap = processHistory.find(p => p.process === 'Tap');
-      const totalDuration = tap ? (outTime - new Date(tap.inTime)) / 1000 : processDuration;
-
-      if (process === 'Tap') {
-        previousLife.metal += 1;
-        previousLife.slag += 1;
-      } else if (process === 'Down') {
-        previousLife.slag = 0;
-      } else if (process === 'Full Down') {
-        previousLife = { metal: 0, slag: 0 };
+      if (process === "Tap" && !isFirstCycle && lastProc !== "Left Caster" && lastProc !== "Out Gas" && lastProc !== "Full Down") {
+        alert("Tap can only be selected after completing a cycle or from Out Gas or Full Down.");
+        return;
       }
 
-      const data = {
-        ladleNo,
+      let metalLife = prev.metalLife || 0;
+      let slagLife = prev.slagLife || 0;
+      let tapTime = prev.tapTime || null;
+
+      if (process === "Tap") {
+        metalLife += 1;
+        slagLife += 1;
+        tapTime = timestamp;
+      } else if (process === "Down") {
+        slagLife = 0;
+      } else if (process === "Full Down") {
+        slagLife = 0;
+        metalLife = 0;
+        tapTime = null;
+      } else if (lastProc === "Down" && process !== "Down") {
+        slagLife = 1;
+        metalLife += 1;
+      }
+
+      ladleStatus[ladleNo] = {
         process,
-        inTime: inTimeStr,
-        outTime: outTimeStr,
-        processDuration,
-        totalDuration,
-        metalLife: previousLife.metal,
-        slagLife: previousLife.slag
+        time: timestamp,
+        remarks,
+        metalLife,
+        slagLife,
+        tapTime
       };
 
-      socket.emit('new_entry', data);
+      renderTable();
     }
 
-    function renderDashboard(data) {
-      const dashboard = document.getElementById('dashboard');
-      dashboard.innerHTML = `
-        <tr>
-          <td>${data.ladleNo}</td>
-          <td>${data.process}</td>
-          <td>${formatTime(data.processDuration)}</td>
-          <td>${formatTime(data.totalDuration)}</td>
-          <td>${data.metalLife}</td>
-          <td>${data.slagLife}</td>
-        </tr>
-      `;
+    function formatTime(minutes) {
+      const days = Math.floor(minutes / 1440);
+      const hrs = Math.floor((minutes % 1440) / 60);
+      const mins = minutes % 60;
+      return `${days > 0 ? days + 'd ' : ''}${hrs > 0 ? hrs + ' hr ' : ''}${mins} min`;
     }
 
-    function formatTime(seconds) {
-      const h = Math.floor(seconds / 3600);
-      const m = Math.floor((seconds % 3600) / 60);
-      const s = Math.floor(seconds % 60);
-      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    function differenceInMinutes(date1, date2) {
+      return Math.floor((date1 - date2) / 60000);
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("statusTable");
+      tbody.innerHTML = "";
+      const entries = Object.entries(ladleStatus);
+
+      if (entries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7">No data yet</td></tr>';
+        return;
+      }
+
+      entries.forEach(([no, status]) => {
+        const duration = formatTime(differenceInMinutes(new Date(), new Date(status.time)));
+        let totalDur = "-";
+
+        if (status.tapTime) {
+          const diff = differenceInMinutes(new Date(), new Date(status.tapTime));
+          totalDur = formatTime(diff);
+        }
+
+        const rowClass = status.process === "Down" ? "red" :
+                         status.process.includes("Gas") ? "yellow" : "green";
+
+        tbody.innerHTML += `
+          <tr class="${rowClass}">
+            <td>${no}</td>
+            <td>${status.process}</td>
+            <td>${new Date(status.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+            <td>${duration}</td>
+            <td>${totalDur}</td>
+            <td>${status.slagLife}</td>
+            <td>${status.metalLife}</td>
+          </tr>
+        `;
+      });
     }
   </script>
 </body>
