@@ -49,6 +49,14 @@
       cursor: pointer;
       margin-right: 10px;
     }
+    .delete-button {
+      background-color: red;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -56,7 +64,6 @@
     <h2>Ladle Real-Time Monitoring Dashboard</h2>
     <form id="ladleForm">
       <input type="text" id="ladleNo" placeholder="Ladle No" required />
-
       <select id="process" onchange="toggleLifeInputs()" required>
         <option value="">Select Event</option>
         <option value="Tap">Tap</option>
@@ -79,21 +86,17 @@
         <option value="Down">Down</option>
         <option value="Full Down">Full Down</option>
       </select>
-
       <div id="lifeInputs" style="display:none;">
         <label for="metalLifeInput">Metal Life:</label>
         <input type="number" id="metalLifeInput" min="0" />
         <label for="slagLifeInput">Slag Life:</label>
         <input type="number" id="slagLifeInput" min="0" />
       </div>
-
       <input type="datetime-local" id="eventTime" required />
       <input type="text" id="remarks" placeholder="Remarks (optional)" />
-
       <button class="button" type="button" onclick="submitProcess()">Submit</button>
       <button class="button" type="button" style="background-color:red;" onclick="clearData()">Clear</button>
     </form>
-
     <table>
       <thead>
         <tr>
@@ -105,10 +108,11 @@
           <th>Slag Life</th>
           <th>Metal Life</th>
           <th>Remarks</th>
+          <th>Delete</th>
         </tr>
       </thead>
       <tbody id="dashboard">
-        <tr><td colspan="8">No data yet</td></tr>
+        <tr><td colspan="9">No data yet</td></tr>
       </tbody>
     </table>
   </div>
@@ -120,13 +124,10 @@ const ladleMap = {};
 const tapTimes = {};
 let previousLife = { metal: 0, slag: 0 };
 
-const enterLFGroup = ["Enter LF (LF1)", "Enter LF (LF2)", "Enter LF (LF3)"];
-const enterCasterGroup = ["Enter Caster(CK1)", "Enter Caster(CK2)", "Enter Caster(CV1)", "Enter Caster(CV2)"];
 const sequenceOrder = [
   "Tap", "Enter LF (LF1)", "Enter LF (LF2)", "Enter LF (LF3)", "Left LF",
   "In RH", "Left RH",
-  "Enter Caster(CK1)", "Enter Caster(CK2)", "Enter Caster(CV1)", "Enter Caster(CV2)", "Left Caster",
-  "In Gas", "Out Gas", "Ready Gas", "Ready Out Gas", "Down", "Full Down"
+  "Enter Caster(CK1)", "Enter Caster(CK2)", "Enter Caster(CV1)", "Enter Caster(CV2)", "Left Caster"
 ];
 const eventColors = {
   "Ready for Tap": "#d4f4dd",
@@ -156,7 +157,6 @@ function toggleLifeInputs() {
     (process === "Ready Gas") ? "block" : "none";
 }
 
-// Reset state if new ladle is entered
 document.getElementById("ladleNo").addEventListener("change", () => {
   let ladleNo = document.getElementById("ladleNo").value.trim();
   if (ladleNo) {
@@ -194,25 +194,12 @@ function submitProcess() {
 
   const lastEvent = ladleMap[ladleNo];
   const cycleStarted = lastEvent && lastEvent.process === "Tap";
+  const lastIndex = lastEvent ? sequenceOrder.findIndex(e => e === lastEvent.process) : -1;
+  const currentIndex = sequenceOrder.findIndex(e => e === process);
 
-  if (enterLFGroup.includes(process)) {
-    if (lastEvent && enterLFGroup.includes(lastEvent.process) && lastEvent.process !== process) {
-      alert("Cannot select another Enter LF event before completing the cycle.");
-      return;
-    }
-  }
-
-  if (enterCasterGroup.includes(process)) {
-    if (lastEvent && enterCasterGroup.includes(lastEvent.process) && lastEvent.process !== process) {
-      alert("Cannot select another Enter Caster event before completing the cycle.");
-      return;
-    }
-  }
-
-  if (cycleStarted && lastEvent) {
-    const lastIndex = sequenceOrder.findIndex(e => e === lastEvent.process);
-    const currentIndex = sequenceOrder.findIndex(e => e === process);
-    if (currentIndex !== -1 && lastIndex !== -1 && currentIndex <= lastIndex) {
+  // Enforce strict cycle rules if cycle has started
+  if (cycleStarted && lastIndex !== -1 && currentIndex !== -1) {
+    if (currentIndex <= lastIndex) {
       alert("Must follow event sequence before selecting earlier or same event.");
       return;
     }
@@ -278,11 +265,16 @@ function clearData() {
   if (!confirm("Are you sure you want to clear all data?")) return;
   fetch("/clear_data", { method: "POST" }).then(() => {
     document.getElementById("dashboard").innerHTML =
-      `<tr><td colspan="8">No data yet</td></tr>`;
+      `<tr><td colspan="9">No data yet</td></tr>`;
     for (let key in ladleMap) delete ladleMap[key];
     for (let key in tapTimes) delete tapTimes[key];
     previousLife = { metal: 0, slag: 0 };
   });
+}
+
+function deleteRow(ladleNo) {
+  if (!confirm("Are you sure you want to delete this row?")) return;
+  socket.emit("delete_entry", { ladleNo });
 }
 
 window.onload = () => {
@@ -322,22 +314,17 @@ function formatDuration(seconds) {
 function renderDashboard() {
   const dashboard = document.getElementById("dashboard");
   dashboard.innerHTML = "";
-
   const now = new Date();
 
   Object.values(ladleMap).forEach((data) => {
     const eventDate = new Date(data.eventTime);
     const sinceText = eventDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
     const duration = (now - eventDate) / 1000;
     let totalDuration = 0;
-
     if (tapTimes[data.ladleNo]) {
       totalDuration = (now - tapTimes[data.ladleNo]) / 1000;
     }
-
     const color = eventColors[data.process] || "";
-
     const row = `
       <tr style="background-color: ${color}">
         <td>${data.ladleNo}</td>
@@ -348,6 +335,7 @@ function renderDashboard() {
         <td>${data.slagLife}</td>
         <td>${data.metalLife}</td>
         <td>${data.remarks || ""}</td>
+        <td><button class="delete-button" onclick="deleteRow('${data.ladleNo}')">Delete</button></td>
       </tr>`;
     dashboard.innerHTML += row;
   });
