@@ -198,6 +198,7 @@ function submitProcess() {
   const lastIndex = lastEvent ? sequenceOrder.findIndex(e => e === lastEvent.process) : -1;
   const currentIndex = sequenceOrder.findIndex(e => e === process);
 
+  // Enforce sequence rules
   if (lastEvent && lastIndex !== -1 && currentIndex !== -1) {
     if (currentIndex <= lastIndex) {
       alert("Must follow event sequence before selecting earlier or same event.");
@@ -218,6 +219,29 @@ function submitProcess() {
       return;
     }
   }
+
+  // NEW RULES ✅
+  if (process === "Left LF") {
+    if (!lastEvent || !enterLFGroup.includes(lastEvent.process)) {
+      alert("Cannot select 'Left LF' unless one of the 'Enter LF' events is selected previously.");
+      return;
+    }
+  }
+
+  if (process === "Left RH") {
+    if (!lastEvent || lastEvent.process !== "In RH") {
+      alert("Cannot select 'Left RH' unless 'In RH' has been selected previously.");
+      return;
+    }
+  }
+
+  if (process === "Left Caster") {
+    if (!lastEvent || !enterCasterGroup.includes(lastEvent.process)) {
+      alert("Cannot select 'Left Caster' unless one of the 'Enter Caster' events is selected previously.");
+      return;
+    }
+  }
+  // ✅ End of new rules
 
   let metalLife = previousLife.metal;
   let slagLife = previousLife.slag;
