@@ -1,96 +1,99 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ladle Real-Time Monitoring</title>
-  <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ladle Real-Time Monitoring Dashboard</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: #f4f4f4;
-      margin: 0;
-      padding: 0;
+      margin: 20px;
+      background-color: #f7f7f7;
     }
     .container {
-      max-width: 1100px;
-      margin: 30px auto;
-      background: #fff;
-      padding: 25px;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      max-width: 1000px;
+      margin: auto;
     }
-    h1 {
-      text-align: center;
-    }
-    form {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      justify-content: center;
-      margin-bottom: 30px;
-    }
+    h2 { text-align: center; }
+    label { font-weight: bold; }
     input, select {
-      padding: 10px;
-      font-size: 1rem;
+      padding: 8px;
+      margin: 8px 0 20px;
+      border-radius: 4px;
       border: 1px solid #ccc;
-      border-radius: 5px;
+    }
+    input[type="text"], input[type="datetime-local"], select {
+      width: 20%;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 20px;
+      margin-top: 30px;
     }
     th, td {
-      border: 1px solid #ccc;
+      border: 1px solid #ddd;
       padding: 10px;
       text-align: center;
     }
-    th {
-      background-color: #f0f0f0;
-    }
-    .green { background-color: #d4f8d4; }
-    .yellow { background-color: #fff5cc; }
-    .red { background-color: #ffd6d6; }
+    th { background-color: #f2f2f2; }
     .button {
-      background-color: #333;
+      background-color: #4CAF50;
       color: white;
       padding: 10px 20px;
       border: none;
       border-radius: 5px;
       cursor: pointer;
+      margin-right: 10px;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Ladle Real-Time Monitoring Dashboard</h1>
+    <h2>Ladle Real-Time Monitoring Dashboard</h2>
     <form id="ladleForm">
-      <input type="number" id="ladleNo" placeholder="Ladle No" required>
-      <select id="process">
+      <input type="text" id="ladleNo" placeholder="Ladle No" required />
+
+      <select id="process" onchange="toggleLifeInputs()" required>
         <option value="">Select Event</option>
         <option value="Tap">Tap</option>
+        <option value="Ready for Tap">Ready for Tap</option>
         <option value="Enter LF (LF1)">Enter LF (LF1)</option>
         <option value="Enter LF (LF2)">Enter LF (LF2)</option>
         <option value="Enter LF (LF3)">Enter LF (LF3)</option>
         <option value="Left LF">Left LF</option>
         <option value="In RH">In RH</option>
         <option value="Left RH">Left RH</option>
-        <option value="Enter Caster (CK1)">Enter Caster (CK1)</option>
-        <option value="Enter Caster (CK2)">Enter Caster (CK2)</option>
-        <option value="Enter Caster (CV1)">Enter Caster (CV1)</option>
-        <option value="Enter Caster (CV2)">Enter Caster (CV2)</option>
+        <option value="Enter Caster(CK1)">Enter Caster(CK1)</option>
+        <option value="Enter Caster(CK2)">Enter Caster(CK2)</option>
+        <option value="Enter Caster(CV1)">Enter Caster(CV1)</option>
+        <option value="Enter Caster(CV2)">Enter Caster(CV2)</option>
         <option value="Left Caster">Left Caster</option>
         <option value="In Gas">In Gas</option>
         <option value="Out Gas">Out Gas</option>
+        <option value="Ready Gas">Ready Gas</option>
+        <option value="Ready Out Gas">Ready Out Gas</option>
         <option value="Down">Down</option>
         <option value="Full Down">Full Down</option>
       </select>
-      <input type="datetime-local" id="timestamp" required>
-      <input type="text" id="remarks" placeholder="Remarks (optional)">
-      <button type="button" class="button" onclick="handleSubmit()">Submit</button>
-      <button type="button" class="button" onclick="renderTable()">Refresh</button>
+
+      <div id="lifeInputs" style="display:none;">
+        <label for="metalLifeInput">Metal Life:</label>
+        <input type="number" id="metalLifeInput" min="0" />
+        <label for="slagLifeInput">Slag Life:</label>
+        <input type="number" id="slagLifeInput" min="0" />
+      </div>
+
+      <input type="datetime-local" id="eventTime" required />
+      <input type="text" id="remarks" placeholder="Remarks (optional)" />
+
+      <button class="button" type="button" onclick="submitProcess()">Submit</button>
+      <button class="button" type="button" style="background-color:red;" onclick="clearData()">Clear</button>
     </form>
+
     <table>
       <thead>
         <tr>
@@ -101,120 +104,243 @@
           <th>Total Duration</th>
           <th>Slag Life</th>
           <th>Metal Life</th>
+          <th>Remarks</th>
         </tr>
       </thead>
-      <tbody id="statusTable">
-        <tr><td colspan="7">No data yet</td></tr>
+      <tbody id="dashboard">
+        <tr><td colspan="8">No data yet</td></tr>
       </tbody>
     </table>
   </div>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script>
-    const socket = io();
-    const ladleStatus = {};
+const socket = io();
+const ladleMap = {};
+const tapTimes = {};
+let previousLife = { metal: 0, slag: 0 };
 
-    function handleSubmit() {
-      const ladleNo = document.getElementById('ladleNo').value.trim();
-      const process = document.getElementById('process').value;
-      const timestamp = document.getElementById('timestamp').value;
-      const remarks = document.getElementById('remarks').value.trim();
+const enterLFGroup = ["Enter LF (LF1)", "Enter LF (LF2)", "Enter LF (LF3)"];
+const enterCasterGroup = ["Enter Caster(CK1)", "Enter Caster(CK2)", "Enter Caster(CV1)", "Enter Caster(CV2)"];
+const sequenceOrder = [
+  "Tap", "Enter LF (LF1)", "Enter LF (LF2)", "Enter LF (LF3)", "Left LF",
+  "In RH", "Left RH",
+  "Enter Caster(CK1)", "Enter Caster(CK2)", "Enter Caster(CV1)", "Enter Caster(CV2)", "Left Caster",
+  "In Gas", "Out Gas", "Ready Gas", "Ready Out Gas", "Down", "Full Down"
+];
+const eventColors = {
+  "Ready for Tap": "#d4f4dd",
+  "Tap": "#d4f4dd",
+  "Enter LF (LF1)": "#d4f4dd",
+  "Enter LF (LF2)": "#d4f4dd",
+  "Enter LF (LF3)": "#d4f4dd",
+  "Left LF": "#d4f4dd",
+  "In RH": "#d4f4dd",
+  "Left RH": "#d4f4dd",
+  "Enter Caster(CK1)": "#d4f4dd",
+  "Enter Caster(CK2)": "#d4f4dd",
+  "Enter Caster(CV1)": "#d4f4dd",
+  "Enter Caster(CV2)": "#d4f4dd",
+  "Left Caster": "#d4f4dd",
+  "Down": "#e0e0e0",
+  "Full Down": "#f8d7da",
+  "In Gas": "#ffe5b4",
+  "Out Gas": "#add8e6",
+  "Ready Gas": "#fffacd",
+  "Ready Out Gas": "#e6e6fa"
+};
 
-      if (!ladleNo || !process || !timestamp) return;
+function toggleLifeInputs() {
+  const process = document.getElementById("process").value;
+  document.getElementById("lifeInputs").style.display =
+    (process === "Ready Gas") ? "block" : "none";
+}
 
-      const prev = ladleStatus[ladleNo] || {};
-      const lastProc = prev.process;
-      const lastTap = prev.tapTime;
-      const isFirstCycle = !prev.metalLife && !prev.slagLife && !lastTap;
+function submitProcess() {
+  let ladleNo = document.getElementById("ladleNo").value.trim();
+  if (!ladleNo) {
+    alert("Please enter Ladle No.");
+    return;
+  }
+  ladleNo = String(parseInt(ladleNo)); // normalize, treat '09' as '9'
 
-      if (process === "Tap" && !isFirstCycle && lastProc !== "Left Caster" && lastProc !== "Out Gas" && lastProc !== "Full Down") {
-        alert("Tap can only be selected after completing a cycle or from Out Gas or Full Down.");
-        return;
-      }
+  const process = document.getElementById("process").value;
+  const eventTimeStr = document.getElementById("eventTime").value;
+  const remarks = document.getElementById("remarks").value;
 
-      let metalLife = prev.metalLife || 0;
-      let slagLife = prev.slagLife || 0;
-      let tapTime = prev.tapTime || null;
+  if (!process || !eventTimeStr) {
+    alert("Please fill all required fields.");
+    return;
+  }
 
-      if (process === "Tap") {
-        metalLife += 1;
-        slagLife += 1;
-        tapTime = timestamp;
-      } else if (process === "Down") {
-        slagLife = 0;
-      } else if (process === "Full Down") {
-        slagLife = 0;
-        metalLife = 0;
-        tapTime = null;
-      } else if (lastProc === "Down" && process !== "Down") {
-        slagLife = 1;
-        metalLife += 1;
-      }
+  const now = new Date();
+  const eventDate = new Date(eventTimeStr);
 
-      const data = {
-        ladleNo,
-        process,
-        time: timestamp,
-        remarks,
-        metalLife,
-        slagLife,
-        tapTime
-      };
+  if (eventDate > now) {
+    alert("Error: Event time cannot be in the future");
+    return;
+  }
 
-      socket.emit('new_entry', data);
+  const lastEvent = ladleMap[ladleNo];
 
-      document.getElementById('ladleForm').reset();
+  if (enterLFGroup.includes(process)) {
+    if (lastEvent && enterLFGroup.includes(lastEvent.process) && lastEvent.process !== process) {
+      alert("Cannot select another Enter LF event before completing the cycle.");
+      return;
     }
+  }
 
-    function formatTime(minutes) {
-      const days = Math.floor(minutes / 1440);
-      const hrs = Math.floor((minutes % 1440) / 60);
-      const mins = minutes % 60;
-      return `${days > 0 ? days + 'd ' : ''}${hrs > 0 ? hrs + ' hr ' : ''}${mins} min`;
+  if (enterCasterGroup.includes(process)) {
+    if (lastEvent && enterCasterGroup.includes(lastEvent.process) && lastEvent.process !== process) {
+      alert("Cannot select another Enter Caster event before completing the cycle.");
+      return;
     }
+  }
 
-    function differenceInMinutes(date1, date2) {
-      return Math.floor((date1 - date2) / 60000);
+  const cycleStarted = lastEvent && lastEvent.process === "Tap";
+  if (cycleStarted && lastEvent) {
+    const lastIndex = sequenceOrder.findIndex(e => e === lastEvent.process);
+    const currentIndex = sequenceOrder.findIndex(e => e === process);
+    if (currentIndex !== -1 && lastIndex !== -1 && currentIndex <= lastIndex) {
+      alert("Must follow event sequence before selecting earlier or same event.");
+      return;
     }
+  }
 
-    function renderTable() {
-      const tbody = document.getElementById("statusTable");
-      tbody.innerHTML = "";
-      const entries = Object.entries(ladleStatus);
+  let metalLife = previousLife.metal;
+  let slagLife = previousLife.slag;
 
-      if (entries.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7">No data yet</td></tr>';
-        return;
-      }
+  if (!lastEvent) {
+    if (process === "Tap") {
+      metalLife = 0;
+      slagLife = 0;
+    } else if (process === "Ready Gas") {
+      metalLife = parseInt(document.getElementById("metalLifeInput").value || 0);
+      slagLife = parseInt(document.getElementById("slagLifeInput").value || 0);
+    } else {
+      metalLife = 0;
+      slagLife = 0;
+    }
+    previousLife = { metal: metalLife, slag: slagLife };
+  } else {
+    if (process === "Ready Gas") {
+      metalLife = parseInt(document.getElementById("metalLifeInput").value || 0);
+      slagLife = parseInt(document.getElementById("slagLifeInput").value || 0);
+      previousLife = { metal: metalLife, slag: slagLife };
+    } else if (process === "Left Caster") {
+      previousLife.metal += 1;
+      previousLife.slag += 1;
+      metalLife = previousLife.metal;
+      slagLife = previousLife.slag;
+    } else {
+      metalLife = previousLife.metal;
+      slagLife = previousLife.slag;
+    }
+  }
 
-      entries.forEach(([no, status]) => {
-        const duration = formatTime(differenceInMinutes(new Date(), new Date(status.time)));
-        let totalDur = "-";
+  const data = {
+    ladleNo,
+    process,
+    eventTime: eventTimeStr,
+    metalLife,
+    slagLife,
+    remarks
+  };
 
-        if (status.tapTime) {
-          const diff = differenceInMinutes(new Date(), new Date(status.tapTime));
-          totalDur = formatTime(diff);
+  if (process === "Tap") {
+    tapTimes[ladleNo] = eventDate;
+  }
+
+  socket.emit("new_entry", data);
+}
+
+socket.on("update_dashboard", (data) => {
+  ladleMap[data.ladleNo] = data;
+  renderDashboard();
+});
+
+socket.on("error_message", (msg) => {
+  alert(msg.error);
+});
+
+function clearData() {
+  if (!confirm("Are you sure you want to clear all data?")) return;
+  fetch("/clear_data", { method: "POST" }).then(() => {
+    document.getElementById("dashboard").innerHTML =
+      `<tr><td colspan="8">No data yet</td></tr>`;
+    for (let key in ladleMap) delete ladleMap[key];
+    for (let key in tapTimes) delete tapTimes[key];
+    previousLife = { metal: 0, slag: 0 };
+  });
+}
+
+window.onload = () => {
+  fetch("/get_data")
+    .then((res) => res.json())
+    .then((dataArr) => {
+      if (!Array.isArray(dataArr) || dataArr.length === 0) return;
+      document.getElementById("dashboard").innerHTML = "";
+      dataArr.forEach(d => {
+        ladleMap[d.ladleNo] = d;
+        if (d.process === "Tap") {
+          tapTimes[d.ladleNo] = new Date(d.eventTime);
         }
-
-        const rowClass = status.process === "Down" ? "red" :
-                         status.process.includes("Gas") ? "yellow" : "green";
-
-        tbody.innerHTML += `
-          <tr class="${rowClass}">
-            <td>${no}</td>
-            <td>${status.process}</td>
-            <td>${new Date(status.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-            <td>${duration}</td>
-            <td>${totalDur}</td>
-            <td>${status.slagLife}</td>
-            <td>${status.metalLife}</td>
-          </tr>
-        `;
       });
+      renderDashboard();
+      const last = dataArr[dataArr.length - 1];
+      if (last) previousLife = { metal: last.metalLife, slag: last.slagLife };
+    });
+};
+
+function formatDuration(seconds) {
+  if (!isFinite(seconds) || seconds < 0) return "0 sec";
+  const days = Math.floor(seconds / (3600 * 24));
+  const hours = Math.floor((seconds % (3600 * 24)) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  const parts = [];
+  if (days > 0) parts.push(`${days} day${days !== 1 ? 's' : ''}`);
+  if (hours > 0) parts.push(`${hours} hr${hours !== 1 ? 's' : ''}`);
+  if (minutes > 0) parts.push(`${minutes} min${minutes !== 1 ? 's' : ''}`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs} sec${secs !== 1 ? 's' : ''}`);
+
+  return parts.join(" ");
+}
+
+function renderDashboard() {
+  const dashboard = document.getElementById("dashboard");
+  dashboard.innerHTML = "";
+
+  const now = new Date();
+
+  Object.values(ladleMap).forEach((data) => {
+    const eventDate = new Date(data.eventTime);
+    const sinceText = eventDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const duration = (now - eventDate) / 1000;
+    let totalDuration = 0;
+
+    if (tapTimes[data.ladleNo]) {
+      totalDuration = (now - tapTimes[data.ladleNo]) / 1000;
     }
 
-    socket.on('update_dashboard', data => {
-      ladleStatus[data.ladleNo] = data;
-      renderTable();
-    });
+    const color = eventColors[data.process] || "";
+
+    const row = `
+      <tr style="background-color: ${color}">
+        <td>${data.ladleNo}</td>
+        <td>${data.process}</td>
+        <td>${sinceText}</td>
+        <td>${formatDuration(duration)}</td>
+        <td>${formatDuration(totalDuration)}</td>
+        <td>${data.slagLife}</td>
+        <td>${data.metalLife}</td>
+        <td>${data.remarks || ""}</td>
+      </tr>`;
+    dashboard.innerHTML += row;
+  });
+}
   </script>
 </body>
 </html>
