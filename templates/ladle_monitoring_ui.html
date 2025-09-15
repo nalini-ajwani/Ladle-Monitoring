@@ -123,16 +123,16 @@ const socket = io();
 const ladleMap = {};
 const tapTimes = {};
 let previousLife = { metal: 0, slag: 0 };
+const cycleState = {}; // Tracks current stage of each ladle
 
 const sequenceOrder = [
-  "Tap", "Enter LF (LF1)", "Enter LF (LF2)", "Enter LF (LF3)", "Left LF",
-  "In RH", "Left RH",
-  "Enter Caster(CK1)", "Enter Caster(CK2)", "Enter Caster(CV1)", "Enter Caster(CV2)", "Left Caster"
+  "Tap", "Enter LF", "Left LF", "In RH", "Left RH", "Enter Caster", "Left Caster"
 ];
 const enterLFGroup = ["Enter LF (LF1)", "Enter LF (LF2)", "Enter LF (LF3)"];
 const enterCasterGroup = ["Enter Caster(CK1)", "Enter Caster(CK2)", "Enter Caster(CV1)", "Enter Caster(CV2)"];
+
 const rowColors = {
-  "Ready for Tap": "#d4f4dd",   // light green
+  "Ready for Tap": "#d4f4dd",
   "Tap": "#d4f4dd",
   "Enter LF (LF1)": "#d4f4dd",
   "Enter LF (LF2)": "#d4f4dd",
@@ -166,6 +166,9 @@ document.getElementById("ladleNo").addEventListener("change", () => {
     if (!ladleMap[ladleNo]) {
       previousLife = { metal: 0, slag: 0 };
     }
+    if (!cycleState[ladleNo]) {
+      cycleState[ladleNo] = "START";
+    }
   }
 });
 
@@ -195,54 +198,14 @@ function submitProcess() {
   }
 
   const lastEvent = ladleMap[ladleNo];
-  const lastIndex = lastEvent ? sequenceOrder.findIndex(e => e === lastEvent.process) : -1;
-  const currentIndex = sequenceOrder.findIndex(e => e === process);
+  const state = cycleState[ladleNo] || "START";
 
-  // Enforce sequence rules
-  if (lastEvent && lastIndex !== -1 && currentIndex !== -1) {
-    if (currentIndex <= lastIndex) {
-      alert("Must follow event sequence before selecting earlier or same event.");
-      return;
-    }
+  // Enforce cyclic sequence
+  if (!validateCycle(state, process, lastEvent)) {
+    return;
   }
 
-  if (enterLFGroup.includes(process)) {
-    if (lastEvent && enterLFGroup.includes(lastEvent.process) && lastEvent.process !== process) {
-      alert("Cannot select another Enter LF event before completing the cycle.");
-      return;
-    }
-  }
-
-  if (enterCasterGroup.includes(process)) {
-    if (lastEvent && enterCasterGroup.includes(lastEvent.process) && lastEvent.process !== process) {
-      alert("Cannot select another Enter Caster event before completing the cycle.");
-      return;
-    }
-  }
-
-  // NEW RULES ✅
-  if (process === "Left LF") {
-    if (!lastEvent || !enterLFGroup.includes(lastEvent.process)) {
-      alert("Cannot select 'Left LF' unless one of the 'Enter LF' events is selected previously.");
-      return;
-    }
-  }
-
-  if (process === "Left RH") {
-    if (!lastEvent || lastEvent.process !== "In RH") {
-      alert("Cannot select 'Left RH' unless 'In RH' has been selected previously.");
-      return;
-    }
-  }
-
-  if (process === "Left Caster") {
-    if (!lastEvent || !enterCasterGroup.includes(lastEvent.process)) {
-      alert("Cannot select 'Left Caster' unless one of the 'Enter Caster' events is selected previously.");
-      return;
-    }
-  }
-  // ✅ End of new rules
-
+  // Handle lifecycle counters
   let metalLife = previousLife.metal;
   let slagLife = previousLife.slag;
 
@@ -274,6 +237,7 @@ function submitProcess() {
     }
   }
 
+  // Prepare data
   const data = {
     ladleNo,
     process,
@@ -287,19 +251,87 @@ function submitProcess() {
     tapTimes[ladleNo] = eventDate;
   }
 
+  // Update cycle state
+  updateCycleState(ladleNo, process);
+
   socket.emit("new_entry", data);
 }
 
-socket.on("update_dashboard", (data) => {
-  if (data.ladleNo) {
-    ladleMap[data.ladleNo] = data;
+function validateCycle(state, process, lastEvent) {
+  if (state === "START") {
+    if (process !== "Tap" && process !== "Ready for Tap") {
+      alert("Cycle must start with 'Tap' or 'Ready for Tap'.");
+      return false;
+    }
   }
-  renderDashboard();
-});
+  if (state === "TAP_DONE") {
+    if (!enterLFGroup.includes(process)) {
+      alert("After 'Tap', you must select one 'Enter LF' event.");
+      return false;
+    }
+  }
+  if (state === "ENTER_LF_DONE") {
+    if (process !== "Left LF") {
+      alert("After 'Enter LF', you must select 'Left LF'.");
+      return false;
+    }
+  }
+  if (state === "LEFT_LF_DONE") {
+    if (process === "In RH" || process === "Enter Caster(CK1)" || process === "Enter Caster(CK2)" || process === "Enter Caster(CV1)" || process === "Enter Caster(CV2)") {
+      return true;
+    } else {
+      alert("After 'Left LF', you can select 'In RH' or 'Enter Caster'.");
+      return false;
+    }
+  }
+  if (state === "IN_RH_DONE") {
+    if (process === "Left RH") {
+      return true;
+    } else {
+      alert("After 'In RH', you can select 'Left RH'.");
+      return false;
+    }
+  }
+  if (state === "LEFT_RH_DONE") {
+    if (enterCasterGroup.includes(process)) {
+      return true;
+    } else {
+      alert("After 'Left RH', you must select an 'Enter Caster' event.");
+      return false;
+    }
+  }
+  if (state === "ENTER_CASTER_DONE") {
+    if (process === "Left Caster") {
+      return true;
+    } else {
+      alert("After 'Enter Caster', you must select 'Left Caster'.");
+      return false;
+    }
+  }
+  return true;
+}
 
-socket.on("error_message", (msg) => {
-  alert(msg.error);
-});
+function updateCycleState(ladleNo, process) {
+  if (!cycleState[ladleNo]) cycleState[ladleNo] = "START";
+  let state = cycleState[ladleNo];
+
+  if (process === "Tap" || process === "Ready for Tap") {
+    state = "TAP_DONE";
+  } else if (enterLFGroup.includes(process)) {
+    state = "ENTER_LF_DONE";
+  } else if (process === "Left LF") {
+    state = "LEFT_LF_DONE";
+  } else if (process === "In RH") {
+    state = "IN_RH_DONE";
+  } else if (process === "Left RH") {
+    state = "LEFT_RH_DONE";
+  } else if (enterCasterGroup.includes(process)) {
+    state = "ENTER_CASTER_DONE";
+  } else if (process === "Left Caster") {
+    state = "START";
+  }
+  cycleState[ladleNo] = state;
+}
 
 function clearData() {
   if (!confirm("Are you sure you want to clear all data?")) return;
@@ -308,6 +340,7 @@ function clearData() {
       `<tr><td colspan="9">No data yet</td></tr>`;
     for (let key in ladleMap) delete ladleMap[key];
     for (let key in tapTimes) delete tapTimes[key];
+    for (let key in cycleState) delete cycleState[key];
     previousLife = { metal: 0, slag: 0 };
   });
 }
@@ -327,11 +360,10 @@ window.onload = () => {
         ladleMap[d.ladleNo] = d;
         if (d.process === "Tap") {
           tapTimes[d.ladleNo] = new Date(d.eventTime);
+          cycleState[d.ladleNo] = "TAP_DONE";
         }
       });
       renderDashboard();
-      const last = dataArr[dataArr.length - 1];
-      if (last) previousLife = { metal: last.metalLife, slag: last.slagLife };
     });
 };
 
