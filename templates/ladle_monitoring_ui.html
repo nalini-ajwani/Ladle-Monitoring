@@ -328,7 +328,7 @@ function updateCycleState(ladleNo, process) {
   } else if (enterCasterGroup.includes(process)) {
     state = "ENTER_CASTER_DONE";
   } else if (process === "Left Caster") {
-    state = "START";
+    state = "START"; // Cycle completed, reset
   }
   cycleState[ladleNo] = state;
 }
