@@ -129,27 +129,9 @@ const sequenceOrder = [
   "In RH", "Left RH",
   "Enter Caster(CK1)", "Enter Caster(CK2)", "Enter Caster(CV1)", "Enter Caster(CV2)", "Left Caster"
 ];
-const eventColors = {
-  "Ready for Tap": "#d4f4dd",
-  "Tap": "#d4f4dd",
-  "Enter LF (LF1)": "#d4f4dd",
-  "Enter LF (LF2)": "#d4f4dd",
-  "Enter LF (LF3)": "#d4f4dd",
-  "Left LF": "#d4f4dd",
-  "In RH": "#d4f4dd",
-  "Left RH": "#d4f4dd",
-  "Enter Caster(CK1)": "#d4f4dd",
-  "Enter Caster(CK2)": "#d4f4dd",
-  "Enter Caster(CV1)": "#d4f4dd",
-  "Enter Caster(CV2)": "#d4f4dd",
-  "Left Caster": "#d4f4dd",
-  "Down": "#e0e0e0",
-  "Full Down": "#f8d7da",
-  "In Gas": "#ffe5b4",
-  "Out Gas": "#add8e6",
-  "Ready Gas": "#fffacd",
-  "Ready Out Gas": "#e6e6fa"
-};
+
+const enterLFGroup = ["Enter LF (LF1)", "Enter LF (LF2)", "Enter LF (LF3)"];
+const enterCasterGroup = ["Enter Caster(CK1)", "Enter Caster(CK2)", "Enter Caster(CV1)", "Enter Caster(CV2)"];
 
 function toggleLifeInputs() {
   const process = document.getElementById("process").value;
@@ -193,14 +175,29 @@ function submitProcess() {
   }
 
   const lastEvent = ladleMap[ladleNo];
-  const cycleStarted = lastEvent && lastEvent.process === "Tap";
   const lastIndex = lastEvent ? sequenceOrder.findIndex(e => e === lastEvent.process) : -1;
   const currentIndex = sequenceOrder.findIndex(e => e === process);
 
-  // Enforce strict cycle rules if cycle has started
-  if (cycleStarted && lastIndex !== -1 && currentIndex !== -1) {
+  // Strict sequence validation
+  if (lastEvent && lastIndex !== -1 && currentIndex !== -1) {
     if (currentIndex <= lastIndex) {
       alert("Must follow event sequence before selecting earlier or same event.");
+      return;
+    }
+  }
+
+  // Group validation for Enter LF
+  if (enterLFGroup.includes(process)) {
+    if (lastEvent && enterLFGroup.includes(lastEvent.process) && lastEvent.process !== process) {
+      alert("Cannot select another Enter LF event before completing the cycle.");
+      return;
+    }
+  }
+
+  // Group validation for Enter Caster
+  if (enterCasterGroup.includes(process)) {
+    if (lastEvent && enterCasterGroup.includes(lastEvent.process) && lastEvent.process !== process) {
+      alert("Cannot select another Enter Caster event before completing the cycle.");
       return;
     }
   }
@@ -324,7 +321,7 @@ function renderDashboard() {
     if (tapTimes[data.ladleNo]) {
       totalDuration = (now - tapTimes[data.ladleNo]) / 1000;
     }
-    const color = eventColors[data.process] || "";
+    const color = "#fff"; // Add coloring logic here if needed
     const row = `
       <tr style="background-color: ${color}">
         <td>${data.ladleNo}</td>
@@ -340,6 +337,6 @@ function renderDashboard() {
     dashboard.innerHTML += row;
   });
 }
-  </script>
+</script>
 </body>
 </html>
