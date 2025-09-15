@@ -39,18 +39,23 @@ def clear_data():
 
 @socketio.on('new_entry')
 def handle_new_entry(data):
-    # Prevent duplicate "Enter LF" or "Enter Caster"
-    if len(ladle_data) > 0:
-        last_process = ladle_data[-1].get("process")
-        if (data["process"] in ["Enter LF", "Enter Caster"]) and (last_process == data["process"]):
-            emit("error_message", {"error": "Duplicate LF/Caster not allowed"}, room=request.sid)
-            return
+    global ladle_data
 
+    # Remove any existing entry for this ladle
+    ladle_data = [d for d in ladle_data if d["ladleNo"] != data["ladleNo"]]
+
+    # Add new entry
     ladle_data.append(data)
     save_data()
     emit('update_dashboard', data, broadcast=True)
 
+@socketio.on('delete_entry')
+def handle_delete_entry(data):
+    global ladle_data
+    ladle_data = [d for d in ladle_data if d["ladleNo"] != data["ladleNo"]]
+    save_data()
+    emit('update_dashboard', {}, broadcast=True)
+
 if __name__ == '__main__':
     load_data()
-    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-
+    socketio.run(app, host='0.0.0.0', port=5000)
