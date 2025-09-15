@@ -156,13 +156,24 @@ function toggleLifeInputs() {
     (process === "Ready Gas") ? "block" : "none";
 }
 
+// Reset state if new ladle is entered
+document.getElementById("ladleNo").addEventListener("change", () => {
+  let ladleNo = document.getElementById("ladleNo").value.trim();
+  if (ladleNo) {
+    ladleNo = String(parseInt(ladleNo));
+    if (!ladleMap[ladleNo]) {
+      previousLife = { metal: 0, slag: 0 };
+    }
+  }
+});
+
 function submitProcess() {
   let ladleNo = document.getElementById("ladleNo").value.trim();
   if (!ladleNo) {
     alert("Please enter Ladle No.");
     return;
   }
-  ladleNo = String(parseInt(ladleNo)); // normalize, treat '09' as '9'
+  ladleNo = String(parseInt(ladleNo));
 
   const process = document.getElementById("process").value;
   const eventTimeStr = document.getElementById("eventTime").value;
@@ -182,6 +193,7 @@ function submitProcess() {
   }
 
   const lastEvent = ladleMap[ladleNo];
+  const cycleStarted = lastEvent && lastEvent.process === "Tap";
 
   if (enterLFGroup.includes(process)) {
     if (lastEvent && enterLFGroup.includes(lastEvent.process) && lastEvent.process !== process) {
@@ -197,7 +209,6 @@ function submitProcess() {
     }
   }
 
-  const cycleStarted = lastEvent && lastEvent.process === "Tap";
   if (cycleStarted && lastEvent) {
     const lastIndex = sequenceOrder.findIndex(e => e === lastEvent.process);
     const currentIndex = sequenceOrder.findIndex(e => e === process);
