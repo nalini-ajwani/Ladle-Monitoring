@@ -277,10 +277,10 @@ function validateCycle(state, process, lastEvent) {
     }
   }
   if (state === "LEFT_LF_DONE") {
-    if (process === "In RH" || process === "Enter Caster(CK1)" || process === "Enter Caster(CK2)" || process === "Enter Caster(CV1)" || process === "Enter Caster(CV2)") {
+    if (process === "In RH" || enterCasterGroup.includes(process)) {
       return true;
     } else {
-      alert("After 'Left LF', you can select 'In RH' or 'Enter Caster'.");
+      alert("After 'Left LF', you can select 'In RH' or an 'Enter Caster' event.");
       return false;
     }
   }
