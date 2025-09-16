@@ -171,6 +171,13 @@ document.getElementById("ladleNo").addEventListener("change", () => {
 });
 
 function validateCycle(state, process, lastEvent) {
+  const cycleEvents = ["Tap", ...enterLFGroup, "Left LF", "In RH", "Left RH", ...enterCasterGroup, "Left Caster"];
+
+  if (!cycleEvents.includes(process)) {
+    // Independent events are allowed anytime
+    return true;
+  }
+
   if (state === "START") {
     if (process !== "Tap" && process !== "Ready for Tap") {
       alert("Cycle must start with 'Tap' or 'Ready for Tap'.");
