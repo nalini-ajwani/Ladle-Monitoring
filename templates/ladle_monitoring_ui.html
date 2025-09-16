@@ -174,7 +174,7 @@ function validateCycle(state, process, lastEvent) {
   const cycleEvents = ["Tap", ...enterLFGroup, "Left LF", "In RH", "Left RH", ...enterCasterGroup, "Left Caster"];
 
   if (!cycleEvents.includes(process)) {
-    // Events not part of the cycle can be entered anytime
+    // Independent events are allowed anytime
     return true;
   }
 
@@ -242,8 +242,14 @@ function updateCycleState(ladleNo, process) {
   if (!cycleState[ladleNo]) cycleState[ladleNo] = "START";
   let state = cycleState[ladleNo];
 
-  if (process === "Tap" || process === "Ready for Tap") {
-    state = "TAP_DONE";
+  if (process === "Tap") {
+    // Special case: if last event was Ready for Tap, don't transition to TAP_DONE
+    if (ladleMap[ladleNo] && ladleMap[ladleNo].process === "Ready for Tap") {
+      // Stay in START or optionally transition to a neutral state if needed
+      state = "START";
+    } else {
+      state = "TAP_DONE";
+    }
   } else if (enterLFGroup.includes(process)) {
     state = "ENTER_LF_DONE";
   } else if (process === "Left LF") {
@@ -259,7 +265,7 @@ function updateCycleState(ladleNo, process) {
   }
   cycleState[ladleNo] = state;
 }
-
+    
 function submitProcess() {
   let ladleNo = document.getElementById("ladleNo").value.trim();
   if (!ladleNo) {
