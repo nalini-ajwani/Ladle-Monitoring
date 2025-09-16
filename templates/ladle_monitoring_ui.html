@@ -174,16 +174,23 @@ function validateCycle(state, process, lastEvent) {
   const cycleEvents = ["Tap", ...enterLFGroup, "Left LF", "In RH", "Left RH", ...enterCasterGroup, "Left Caster"];
 
   if (!cycleEvents.includes(process)) {
-    // Independent events are allowed anytime
+    // Events not part of the cycle can be entered anytime
     return true;
   }
 
   if (state === "START") {
+    if (process === "Tap") {
+      if (lastEvent && lastEvent.process === "Ready for Tap") {
+        // Allow Ready for Tap → Tap transition without enforcing cycle
+        return true;
+      }
+    }
     if (process !== "Tap" && process !== "Ready for Tap") {
       alert("Cycle must start with 'Tap' or 'Ready for Tap'.");
       return false;
     }
   }
+
   if (state === "TAP_DONE") {
     if (!enterLFGroup.includes(process)) {
       alert("After 'Tap', you must select one 'Enter LF' event.");
