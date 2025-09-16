@@ -122,8 +122,8 @@
 const socket = io();
 const ladleMap = {};
 const tapTimes = {};
+const cycleState = {};
 let previousLife = { metal: 0, slag: 0 };
-const cycleState = {}; // Tracks current stage of each ladle
 
 const sequenceOrder = [
   "Tap", "Enter LF", "Left LF", "In RH", "Left RH", "Enter Caster", "Left Caster"
@@ -165,97 +165,10 @@ document.getElementById("ladleNo").addEventListener("change", () => {
     ladleNo = String(parseInt(ladleNo));
     if (!ladleMap[ladleNo]) {
       previousLife = { metal: 0, slag: 0 };
-    }
-    if (!cycleState[ladleNo]) {
       cycleState[ladleNo] = "START";
     }
   }
 });
-
-function submitProcess() {
-  let ladleNo = document.getElementById("ladleNo").value.trim();
-  if (!ladleNo) {
-    alert("Please enter Ladle No.");
-    return;
-  }
-  ladleNo = String(parseInt(ladleNo));
-
-  const process = document.getElementById("process").value;
-  const eventTimeStr = document.getElementById("eventTime").value;
-  const remarks = document.getElementById("remarks").value;
-
-  if (!process || !eventTimeStr) {
-    alert("Please fill all required fields.");
-    return;
-  }
-
-  const now = new Date();
-  const eventDate = new Date(eventTimeStr);
-
-  if (eventDate > now) {
-    alert("Error: Event time cannot be in the future");
-    return;
-  }
-
-  const lastEvent = ladleMap[ladleNo];
-  const state = cycleState[ladleNo] || "START";
-
-  // Enforce cyclic sequence
-  if (!validateCycle(state, process, lastEvent)) {
-    return;
-  }
-
-  // Handle lifecycle counters
-  let metalLife = previousLife.metal;
-  let slagLife = previousLife.slag;
-
-  if (!lastEvent) {
-    if (process === "Tap") {
-      metalLife = 0;
-      slagLife = 0;
-    } else if (process === "Ready Gas") {
-      metalLife = parseInt(document.getElementById("metalLifeInput").value || 0);
-      slagLife = parseInt(document.getElementById("slagLifeInput").value || 0);
-    } else {
-      metalLife = 0;
-      slagLife = 0;
-    }
-    previousLife = { metal: metalLife, slag: slagLife };
-  } else {
-    if (process === "Ready Gas") {
-      metalLife = parseInt(document.getElementById("metalLifeInput").value || 0);
-      slagLife = parseInt(document.getElementById("slagLifeInput").value || 0);
-      previousLife = { metal: metalLife, slag: slagLife };
-    } else if (process === "Left Caster") {
-      previousLife.metal += 1;
-      previousLife.slag += 1;
-      metalLife = previousLife.metal;
-      slagLife = previousLife.slag;
-    } else {
-      metalLife = previousLife.metal;
-      slagLife = previousLife.slag;
-    }
-  }
-
-  // Prepare data
-  const data = {
-    ladleNo,
-    process,
-    eventTime: eventTimeStr,
-    metalLife,
-    slagLife,
-    remarks
-  };
-
-  if (process === "Tap") {
-    tapTimes[ladleNo] = eventDate;
-  }
-
-  // Update cycle state
-  updateCycleState(ladleNo, process);
-
-  socket.emit("new_entry", data);
-}
 
 function validateCycle(state, process, lastEvent) {
   if (state === "START") {
@@ -328,10 +241,105 @@ function updateCycleState(ladleNo, process) {
   } else if (enterCasterGroup.includes(process)) {
     state = "ENTER_CASTER_DONE";
   } else if (process === "Left Caster") {
-    state = "START"; // Cycle completed, reset
+    state = "START"; // Cycle completed
   }
   cycleState[ladleNo] = state;
 }
+
+function submitProcess() {
+  let ladleNo = document.getElementById("ladleNo").value.trim();
+  if (!ladleNo) {
+    alert("Please enter Ladle No.");
+    return;
+  }
+  ladleNo = String(parseInt(ladleNo));
+
+  const process = document.getElementById("process").value;
+  const eventTimeStr = document.getElementById("eventTime").value;
+  const remarks = document.getElementById("remarks").value;
+
+  if (!process || !eventTimeStr) {
+    alert("Please fill all required fields.");
+    return;
+  }
+
+  const now = new Date();
+  const eventDate = new Date(eventTimeStr);
+
+  if (eventDate > now) {
+    alert("Error: Event time cannot be in the future");
+    return;
+  }
+
+  if (!cycleState[ladleNo]) {
+    cycleState[ladleNo] = "START";
+  }
+  const state = cycleState[ladleNo];
+  const lastEvent = ladleMap[ladleNo];
+
+  if (!validateCycle(state, process, lastEvent)) {
+    return;
+  }
+
+  let metalLife = previousLife.metal;
+  let slagLife = previousLife.slag;
+
+  if (!lastEvent) {
+    if (process === "Tap") {
+      metalLife = 0;
+      slagLife = 0;
+    } else if (process === "Ready Gas") {
+      metalLife = parseInt(document.getElementById("metalLifeInput").value || 0);
+      slagLife = parseInt(document.getElementById("slagLifeInput").value || 0);
+    } else {
+      metalLife = 0;
+      slagLife = 0;
+    }
+    previousLife = { metal: metalLife, slag: slagLife };
+  } else {
+    if (process === "Ready Gas") {
+      metalLife = parseInt(document.getElementById("metalLifeInput").value || 0);
+      slagLife = parseInt(document.getElementById("slagLifeInput").value || 0);
+      previousLife = { metal: metalLife, slag: slagLife };
+    } else if (process === "Left Caster") {
+      previousLife.metal += 1;
+      previousLife.slag += 1;
+      metalLife = previousLife.metal;
+      slagLife = previousLife.slag;
+    } else {
+      metalLife = previousLife.metal;
+      slagLife = previousLife.slag;
+    }
+  }
+
+  const data = {
+    ladleNo,
+    process,
+    eventTime: eventTimeStr,
+    metalLife,
+    slagLife,
+    remarks
+  };
+
+  if (process === "Tap") {
+    tapTimes[ladleNo] = eventDate;
+  }
+
+  updateCycleState(ladleNo, process);
+
+  socket.emit("new_entry", data);
+}
+
+socket.on("update_dashboard", (data) => {
+  if (data.ladleNo) {
+    ladleMap[data.ladleNo] = data;
+  }
+  renderDashboard();
+});
+
+socket.on("error_message", (msg) => {
+  alert(msg.error);
+});
 
 function clearData() {
   if (!confirm("Are you sure you want to clear all data?")) return;
@@ -414,6 +422,6 @@ function renderDashboard() {
     dashboard.innerHTML += row;
   });
 }
-</script>
+  </script>
 </body>
 </html>
